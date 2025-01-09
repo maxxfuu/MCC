@@ -1,5 +1,8 @@
 #include <stdint.h> 
-#include <stddef.h> 
+#include <stddef.h>
+#include <ctype.h>
+#include <stdio.h>
+#include <string.h>
 
 // Identifier Buffer 
 size_t indentifier_buffer = 0; 
@@ -62,6 +65,17 @@ size_t read_ident(char **current) {
 int main() {
     // Block Scope 1, testing read_int and skip_whitespaces    
     {
+        char input[] = "123455"; // poiner to first element in arr 
+        char *cursor = input; 
+        read_int(&cursor);
 
+        memset(ident_buffer, 0, sizeof(ident_buffer));
+        size_t length = read_ident(&cursor);
+
+        printf("Example 2:\n");
+        printf("Parsed identifier:%s\n", ident_buffer);
+        printf("Identifier length:%zu\n\n", length);
     }
 }
+
+// TODO: 1, Finish writing tests for functions. 2, Finish writing Tokenizer/(Lexer)
