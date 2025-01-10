@@ -63,19 +63,28 @@ size_t read_ident(char **current) {
 
 // Test the functions 
 int main() {
-    // Block Scope 1, testing read_int and skip_whitespaces    
-    {
-        char input[] = "123455"; // poiner to first element in arr 
+    { // Block Scope 1   
+        char input[] = "123455abc_def"; // poiner to first element in arr 
         char *cursor = input; 
-        read_int(&cursor);
+ 
+        uint64_t number = read_int(&cursor);
 
+        printf("Example 1, test read_int():\n");
+        printf("Parsed Integer:%llu\n", number);
+    } 
+
+    { // Block Scope 2 
+        char input[] = "variable1 is valid.";
+        char *cursor = input; 
+
+        printf("Example 2, test read_ident():\n");
         memset(ident_buffer, 0, sizeof(ident_buffer));
-        size_t length = read_ident(&cursor);
+        size_t length = read_ident(&cursor); 
+        printf("Parsed identifier: %s\n", ident_buffer);
+        printf("Identifier length: %zu\n\n", length);
 
-        printf("Example 2:\n");
-        printf("Parsed identifier:%s\n", ident_buffer);
-        printf("Identifier length:%zu\n\n", length);
     }
+
 }
 
 // TODO: 1, Finish writing tests for functions. 2, Finish writing Tokenizer/(Lexer)
