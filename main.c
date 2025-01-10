@@ -4,15 +4,8 @@
 #include <stdio.h>
 #include <string.h>
 
-// Identifier Buffer 
-size_t indentifier_buffer = 0; 
 
-// Tokenixation (Lexing) 
-// Token Struct: Pointer to the memory address of a char/string value  
-typedef struct {
-    char *type; 
-    char *value; 
-} Token; 
+// <<<< 1. Lexer/Tokenization >>>> 
 
 // Read Integers 
 uint64_t read_int(char **current) {
@@ -30,10 +23,7 @@ uint64_t read_int(char **current) {
 void skip_whitespaces(char **current) {
     while(isspace(**current)) { // isspace, more thorough with checking white spaces 
         (*current)++;  
-    }
-    // while (**current == ' ' || **current == '\t' || **current == '\n') {
-    //     (*current)++;     
-    // } 
+    } 
 } 
 
 // Read Identifiers 
@@ -54,12 +44,53 @@ size_t read_ident(char **current) {
             break; 
         }
         (*current)++; 
-
         ident_buffer[length++] = c;  
     } 
     ident_buffer[length] = '\0'; 
     return length;   
+}
+
+// <<<< 2. Parser >>>> 
+uint64_t parse_expression(char **current) {
+    skip_whitespaces(current); 
+
+    uint64_t left_value = parse_atom(current); 
+
+    return 0; 
 } 
+
+uint64_t parse_atom(char **current) {
+    skip_whitespaces(current); 
+    
+    // Check for numbers 
+    if (isdigit(**current)) {
+        return read_int(current); 
+    } 
+    
+    // Check for identifiers
+    if (isalpha(**current) || **current == '_') {
+        memset(ident_buffer, 0, sizeof(ident_buffer)); 
+        size_t length = read_ident(current);
+        // TODO: Add to 'ident_buffer', assume all identifier are value 0 
+        return 0; 
+    } 
+
+    // Check for parenthesis 
+    if (**current == "(") {
+        (*current)++; 
+        uint64_t value = parse_expression(current); 
+        if (**current == ')') {
+            (*current)++; 
+            return value; 
+        } else {
+            printf("Error: Exected ')'\n"); 
+            return 0; 
+        } 
+    } 
+     // Print Error
+    printf("Error: Unrecognized atom start: '%c'\n", **current);  
+    return 0; 
+}
 
 // Test the functions 
 int main() {
@@ -87,4 +118,3 @@ int main() {
 
 }
 
-// TODO: 1, Finish writing tests for functions. 2, Finish writing Tokenizer/(Lexer)
