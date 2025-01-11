@@ -4,7 +4,6 @@
 #include <stdio.h>
 #include <string.h>
 
-
 // <<<< 1. Lexer/Tokenization >>>> 
 
 // Read Integers 
@@ -17,47 +16,41 @@ uint64_t read_int(char **current) {
     return result; 
 }
 
-// Variable management code starts here.
-#define MAX_VAR_NAME_LENGTH 20
-
 void skip_whitespaces(char **current) {
     while(isspace(**current)) { // isspace, more thorough with checking white spaces 
         (*current)++;  
     } 
 } 
 
+// Variable management code starts here.
+#define MAX_VAR_NAME_LENGTH 20 
+char ident_buffer[MAX_VAR_NAME_LENGTH];  
+
 // Read Identifiers 
 char ident_buffer[MAX_VAR_NAME_LENGTH];
 size_t read_ident(char **current) {
+    memset(ident_buffer, 0, sizeof(ident_buffer)); 
     size_t length = 0; 
 
-    // Check if first char is alphanumeric or underscore 
+    // Check first character for invalid character
     char c = **current; 
-    if (!isalnum(c) && c != '_') {
+    if (!isalnum(c) && c != '_') { 
+        printf("Error: Invalid Identifier\n"); 
         return 0; 
     } 
 
-    // Read identifier characters. 
-    while (1) {
-        char c = **current; 
-        if (!isalnum(c) && c != '_') {
-            break; 
+    // Read valid identifier characters. 
+    while (isalnum(**current) || **current == '_') {
+        if (length < MAX_VAR_NAME_LENGTH - 1) {
+            ident_buffer[length++] = **current;  
         }
         (*current)++; 
-        ident_buffer[length++] = c;  
     } 
     ident_buffer[length] = '\0'; 
     return length;   
 }
 
-// <<<< 2. Parser >>>> 
-uint64_t parse_expression(char **current) {
-    skip_whitespaces(current); 
-
-    uint64_t left_value = parse_atom(current); 
-
-    return 0; 
-} 
+// <<<< 2. Parser >>>>  
 
 uint64_t parse_atom(char **current) {
     skip_whitespaces(current); 
@@ -91,6 +84,59 @@ uint64_t parse_atom(char **current) {
     printf("Error: Unrecognized atom start: '%c'\n", **current);  
     return 0; 
 }
+
+// Parse expression with considerations of operator precedence 
+uint64_t parse_term(char **current) {
+    uint64_t left = parse_atom(current); 
+
+    while (1) {
+        skip_whitespaces(current); 
+        char op = **current; 
+        
+        if (op != '*' || op != '/') {
+            break; 
+        } 
+
+        (*current)++; // Skip character 
+        uint64_t right = parse_atom(current); 
+
+        if (op == '*') {
+            left *= right; 
+        } else {
+            if (right == 0) {
+                printf("Error: Divison by zero\n");
+                return 0; 
+            }
+            left /= right ; 
+        } 
+    } 
+    return left ; 
+}
+
+uint64_t parse_expression(char **current) {
+    skip_whitespaces(current); 
+
+    uint64_t left = parse_atom(current);  
+
+    while (1) {
+        skip_whitespaces(current); 
+        char op = **current; 
+ 
+        if (op != '+' || op != '-') {
+            break; 
+        } 
+
+        (*current)++; 
+        uint64_t right = parse_term(current); 
+
+        if (op == '+') {
+            left += right; 
+        } else {
+            left -= right; 
+        }
+    }
+    return left; 
+} 
 
 // Test the functions 
 int main() {
