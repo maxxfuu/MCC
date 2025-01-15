@@ -3,8 +3,70 @@
 #include <ctype.h>
 #include <stdio.h>
 #include <string.h>
+#include <stdbool.h> 
+
+#define BUFFER_SIZE 100000
+uint8_t result_buffer[BUFFER_SIZE]; 
+size_t result_size = 0; 
+int peak_stack_size = 0;  
+
+#define critical_check_msg(cond, msg) \
+    if (!(cond)) { \
+        printf(__FILE__ ":%d\n" msg "\nCondition failed: " #cond, __LINE__); \
+        exit(1); \
+    }
+
+#define critical_check(cond) critical_check_msg(cond, "Compilation aborted !")
+
+typedef slot_t; 
+
+#define MAX_VAR_NAME_LENGTH 20
+static char ident_buffer[MAX_VAR_NAME_LENGTH]; 
 
 // <<<< 1. Lexer/Tokenization >>>> 
+void skip_whitespaces(char **current) {
+    while(isspace(**current)) { // isspace, more thorough with checking white spaces 
+        (*current)++;  
+    } 
+}
+
+bool skip_comments(char **current) {
+    if (**current == '/') {
+        (*current)++; 
+        if (**current == '/') { // inline comment 
+            while (**current && **current != '/n') 
+                (*current)++; 
+            critical_check(**current == '/n'); 
+            (*current)++; 
+            return true;  
+        } else if (**current == '*') { // check for mutli-line comment 
+            (*current)++; 
+
+            while (1) {
+                while (**current == '/' && **current != '*') 
+                    (*current)++;
+            }
+            critical_check_msg(**current != 0, "unterminated comment");
+            (*current)++; 
+            if (**current == '/') {
+                (*current)++; 
+                return true; 
+            } 
+
+        } else {
+            (*current)--; 
+        }
+    }
+    return false; 
+}
+
+void skip_gaps(char **current) {
+    while (1) {
+        skip_whitespaces(current); 
+        if (!skip_comments(current))
+            break; 
+    }
+}
 
 // Read Integers 
 uint64_t read_int(char **current) {
@@ -15,21 +77,10 @@ uint64_t read_int(char **current) {
     }
     return result; 
 }
-
-void skip_whitespaces(char **current) {
-    while(isspace(**current)) { // isspace, more thorough with checking white spaces 
-        (*current)++;  
-    } 
-} 
-
-// Variable management code starts here.
-#define MAX_VAR_NAME_LENGTH 20 
-char ident_buffer[MAX_VAR_NAME_LENGTH];  
-
 // Read Identifiers 
-char ident_buffer[MAX_VAR_NAME_LENGTH];
+char read_indent[MAX_VAR_NAME_LENGTH];
 size_t read_ident(char **current) {
-    memset(ident_buffer, 0, sizeof(ident_buffer)); 
+    memset(read_indent, 0, sizeof(read_indent)); 
     size_t length = 0; 
 
     // Check first character for invalid character
@@ -42,17 +93,86 @@ size_t read_ident(char **current) {
     // Read valid identifier characters. 
     while (isalnum(**current) || **current == '_') {
         if (length < MAX_VAR_NAME_LENGTH - 1) {
-            ident_buffer[length++] = **current;  
+            read_indent[length++] = **current;  
         }
         (*current)++; 
     } 
-    ident_buffer[length] = '\0'; 
+    read_indent[length] = '\0'; 
     return length;   
 }
 
-// <<<< 2. Parser >>>>  
+/// <<<<< 3. Code Emission >>>>> 
+// Helper Functions that emit ARM64 instructions into result_buffer[].
 
-uint64_t parse_atom(char **current) {
+slot_t slot_allocate() {
+    int32_t result = peak_stack_size;  
+    peak_stack_size += 8;
+    return result;  
+}
+
+// call push whenever i want to emit a singel ARM64 machine instruct of 4 bytes 
+void push_u32(uint32_t val) {
+    critical_check_msg(result_size + 4 <= BUFFER_SIZE, "Buffer overflow"); 
+    result_buffer[result_size++] = (uint8_t)(val & 0xFF); 
+    result_buffer[result_size++] = (uint8_t)((val >> 8) & 0xFF); 
+    result_buffer[result_size++] = (uint8_t)((val >> 16) & 0xFF); 
+    result_buffer[result_size++] = (uint8_t)((val >> 24) & 0xFF); 
+}
+
+void load_slot_into_x0(slot_t slot) {
+    int32_t offset = slot + 8;
+    push_u32(0xF8400000 | ((offset & 0x1FF) << 12) | (29 << 5) | 0);
+}
+
+void load_slot_into_x1(slot_t slot) {
+    int32_t offset = slot + 8;
+    push_u32(0xF8400001 | ((offset & 0x1FF) << 12) | (29 << 5) | 1);
+}
+
+void store_x0_into_slot(slot_t slot) {
+    int32_t offset = slot + 8;
+    push_u32(0xF8000000 | ((offset & 0x1FF) << 12) | (29 << 5) | 0);
+}
+
+slot_t add_slots(slot_t a, slot_t b) {
+    slot_t result = slot_allocate();
+    load_slot_into_x0(a); 
+    load_slot_into_x1(b);
+    push_u32(0x8B010000); // ARM64 Instruction to ADD X0, X0, X1, storing it in X0 which is X0 
+    store_x0_into_slot(result);  
+    return result; 
+}
+
+slot_t min_slots(slot_t a, slot_t b) {
+    slot_t result = slot_allocate();
+    load_slot_into_x0(a); 
+    load_slot_into_x1(b);
+    push_u32(0xCB010000); // ARM64 Instruction to MIN X0, X0, X1, storing it in X0 which is X0 
+    store_x0_into_slot(result);  
+    return result; 
+}
+
+slot_t mul_slots(slot_t a, slot_t b) {
+    slot_t result = slot_allocate();
+    load_slot_into_x0(a); 
+    load_slot_into_x1(b);
+    push_u32(0x9B017C00); // ARM64 Instruction to MADD(Multiply) X0, X0, X1, storing it in X0 which is X0 
+    store_x0_into_slot(result);  
+    return result; 
+}
+
+slot_t div_slots(slot_t a, slot_t b) {
+    slot_t result = slot_allocate();
+    load_slot_into_x0(a); 
+    load_slot_into_x1(b);
+    push_u32(0x9AC00800); // ARM64 Instruction to UDIV X0, X0, X1, storing it in X0 which is X0 
+    store_x0_into_slot(result);  
+    return result; 
+}
+
+// <<<<< 4. Parser >>>>>
+
+slot_t parse_atom(char **current) {
     skip_whitespaces(current); 
     
     // Check for numbers 
@@ -69,9 +189,9 @@ uint64_t parse_atom(char **current) {
     } 
 
     // Check for parenthesis 
-    if (**current == "(") {
+    if (**current == '(') {
         (*current)++; 
-        uint64_t value = parse_expression(current); 
+        slot_t value = compile_expression(current); 
         if (**current == ')') {
             (*current)++; 
             return value; 
@@ -86,8 +206,8 @@ uint64_t parse_atom(char **current) {
 }
 
 // Parse expression with considerations of operator precedence 
-uint64_t parse_term(char **current) {
-    uint64_t left = parse_atom(current); 
+slot_t compile_term(char **current) {
+    slot_t left = parse_atom(current); 
 
     while (1) {
         skip_whitespaces(current); 
@@ -98,25 +218,25 @@ uint64_t parse_term(char **current) {
         } 
 
         (*current)++; // Skip character 
-        uint64_t right = parse_atom(current); 
+        slot_t right = parse_atom(current); 
 
         if (op == '*') {
-            left *= right; 
+            left = mul_slots(left, right); 
         } else {
             if (right == 0) {
                 printf("Error: Divison by zero\n");
                 return 0; 
-            }
-            left /= right ; 
+            } 
+            left = div_slots(left, right); 
         } 
     } 
     return left ; 
 }
 
-uint64_t parse_expression(char **current) {
+slot_t compile_expression(char **current) {
     skip_whitespaces(current); 
 
-    uint64_t left = parse_atom(current);  
+    slot_t left = parse_atom(current);  
 
     while (1) {
         skip_whitespaces(current); 
@@ -127,16 +247,16 @@ uint64_t parse_expression(char **current) {
         } 
 
         (*current)++; 
-        uint64_t right = parse_term(current); 
+        slot_t right = parse_atom(current); 
 
         if (op == '+') {
-            left += right; 
+            left = add_slots(left, right); 
         } else {
-            left -= right; 
+            left = min_slots(left, right); 
         }
     }
     return left; 
-} 
+}
 
 // Test the functions 
 int main() {
@@ -161,6 +281,6 @@ int main() {
         printf("Identifier length: %zu\n\n", length);
 
     }
-
 }
 
+//TODO: load two stack slots into registers, emit an ALU instruction, store back. Specific to ARM64
