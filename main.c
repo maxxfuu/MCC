@@ -4,7 +4,9 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdbool.h> 
+#include <stdlib.h> 
 
+// <<<<< Global Declarations >>>>> 
 #define BUFFER_SIZE 100000
 uint8_t result_buffer[BUFFER_SIZE]; 
 size_t result_size = 0; 
@@ -18,12 +20,49 @@ int peak_stack_size = 0;
 
 #define critical_check(cond) critical_check_msg(cond, "Compilation aborted !")
 
-typedef slot_t; 
+typedef uint32_t slot_t; 
 
 #define MAX_VAR_NAME_LENGTH 20
 static char ident_buffer[MAX_VAR_NAME_LENGTH]; 
 
-// <<<< 1. Lexer/Tokenization >>>> 
+slot_t add_slots(slot_t a, slot_t b) {
+    slot_t result = slot_allocate();
+    load_slot_into_x0(a); 
+    load_slot_into_x1(b);
+    push_u32(0x8B010000); // ARM64 Instruction to ADD X0, X0, X1, storing it in X0 which is X0 
+    store_x0_into_slot(result);  
+    return result; 
+}
+
+slot_t min_slots(slot_t a, slot_t b) {
+    slot_t result = slot_allocate();
+    load_slot_into_x0(a); 
+    load_slot_into_x1(b);
+    push_u32(0xCB010000); // ARM64 Instruction to MIN X0, X0, X1, storing it in X0 which is X0 
+    store_x0_into_slot(result);  
+    return result; 
+}
+
+slot_t mul_slots(slot_t a, slot_t b) {
+    slot_t result = slot_allocate();
+    load_slot_into_x0(a); 
+    load_slot_into_x1(b);
+    push_u32(0x9B017C00); // ARM64 Instruction to MADD(Multiply) X0, X0, X1, storing it in X0 which is X0 
+    store_x0_into_slot(result);  
+    return result; 
+}
+
+slot_t div_slots(slot_t a, slot_t b) {
+    slot_t result = slot_allocate();
+    load_slot_into_x0(a); 
+    load_slot_into_x1(b);
+    push_u32(0x9AC00800); // ARM64 Instruction to UDIV X0, X0, X1, storing it in X0 which is X0 
+    store_x0_into_slot(result);  
+    return result; 
+}
+
+
+// <<<< 2. Lexer/Tokenization >>>> 
 void skip_whitespaces(char **current) {
     while(isspace(**current)) { // isspace, more thorough with checking white spaces 
         (*current)++;  
@@ -34,25 +73,23 @@ bool skip_comments(char **current) {
     if (**current == '/') {
         (*current)++; 
         if (**current == '/') { // inline comment 
-            while (**current && **current != '/n') 
+            while (**current && **current != '\n') 
                 (*current)++; 
-            critical_check(**current == '/n'); 
+            critical_check(**current == '\n'); 
             (*current)++; 
             return true;  
         } else if (**current == '*') { // check for mutli-line comment 
             (*current)++; 
 
-            while (1) {
-                while (**current == '/' && **current != '*') 
-                    (*current)++;
-            }
+            while (**current && !(**current == '/' || **current != '*'))
+                (*current)++;
+
             critical_check_msg(**current != 0, "unterminated comment");
             (*current)++; 
             if (**current == '/') {
                 (*current)++; 
                 return true; 
             } 
-
         } else {
             (*current)--; 
         }
@@ -101,83 +138,19 @@ size_t read_ident(char **current) {
     return length;   
 }
 
-/// <<<<< 3. Code Emission >>>>> 
-// Helper Functions that emit ARM64 instructions into result_buffer[].
+// Forward Declaration for Parsing 
+slot_t compile_expression(char **current); 
+slot_t parse_atom(char **current); 
 
-slot_t slot_allocate() {
-    int32_t result = peak_stack_size;  
-    peak_stack_size += 8;
-    return result;  
-}
-
-// call push whenever i want to emit a singel ARM64 machine instruct of 4 bytes 
-void push_u32(uint32_t val) {
-    critical_check_msg(result_size + 4 <= BUFFER_SIZE, "Buffer overflow"); 
-    result_buffer[result_size++] = (uint8_t)(val & 0xFF); 
-    result_buffer[result_size++] = (uint8_t)((val >> 8) & 0xFF); 
-    result_buffer[result_size++] = (uint8_t)((val >> 16) & 0xFF); 
-    result_buffer[result_size++] = (uint8_t)((val >> 24) & 0xFF); 
-}
-
-void load_slot_into_x0(slot_t slot) {
-    int32_t offset = slot + 8;
-    push_u32(0xF8400000 | ((offset & 0x1FF) << 12) | (29 << 5) | 0);
-}
-
-void load_slot_into_x1(slot_t slot) {
-    int32_t offset = slot + 8;
-    push_u32(0xF8400001 | ((offset & 0x1FF) << 12) | (29 << 5) | 1);
-}
-
-void store_x0_into_slot(slot_t slot) {
-    int32_t offset = slot + 8;
-    push_u32(0xF8000000 | ((offset & 0x1FF) << 12) | (29 << 5) | 0);
-}
-
-slot_t add_slots(slot_t a, slot_t b) {
-    slot_t result = slot_allocate();
-    load_slot_into_x0(a); 
-    load_slot_into_x1(b);
-    push_u32(0x8B010000); // ARM64 Instruction to ADD X0, X0, X1, storing it in X0 which is X0 
-    store_x0_into_slot(result);  
-    return result; 
-}
-
-slot_t min_slots(slot_t a, slot_t b) {
-    slot_t result = slot_allocate();
-    load_slot_into_x0(a); 
-    load_slot_into_x1(b);
-    push_u32(0xCB010000); // ARM64 Instruction to MIN X0, X0, X1, storing it in X0 which is X0 
-    store_x0_into_slot(result);  
-    return result; 
-}
-
-slot_t mul_slots(slot_t a, slot_t b) {
-    slot_t result = slot_allocate();
-    load_slot_into_x0(a); 
-    load_slot_into_x1(b);
-    push_u32(0x9B017C00); // ARM64 Instruction to MADD(Multiply) X0, X0, X1, storing it in X0 which is X0 
-    store_x0_into_slot(result);  
-    return result; 
-}
-
-slot_t div_slots(slot_t a, slot_t b) {
-    slot_t result = slot_allocate();
-    load_slot_into_x0(a); 
-    load_slot_into_x1(b);
-    push_u32(0x9AC00800); // ARM64 Instruction to UDIV X0, X0, X1, storing it in X0 which is X0 
-    store_x0_into_slot(result);  
-    return result; 
-}
-
-// <<<<< 4. Parser >>>>>
-
+// <<<<< 3. Parser >>>>> 
 slot_t parse_atom(char **current) {
     skip_whitespaces(current); 
     
     // Check for numbers 
-    if (isdigit(**current)) {
-        return read_int(current); 
+    if (isdigit(**current)) { 
+        uint64_t val = read_int(current); 
+        slot_t s = slot_allocate(val); 
+        return s; 
     } 
     
     // Check for identifiers
@@ -213,7 +186,7 @@ slot_t compile_term(char **current) {
         skip_whitespaces(current); 
         char op = **current; 
         
-        if (op != '*' || op != '/') {
+        if (op != '*' && op != '/') {
             break; 
         } 
 
@@ -242,7 +215,7 @@ slot_t compile_expression(char **current) {
         skip_whitespaces(current); 
         char op = **current; 
  
-        if (op != '+' || op != '-') {
+        if (op != '+' && op != '-') {
             break; 
         } 
 
@@ -256,6 +229,38 @@ slot_t compile_expression(char **current) {
         }
     }
     return left; 
+}
+
+// <<<<< 4. Code Emission >>>>>
+
+slot_t slot_allocate() {
+    int32_t result = peak_stack_size;  
+    peak_stack_size += 8;
+    return result;  
+}
+
+// call push whenever i want to emit a singel ARM64 machine instruct of 4 bytes 
+void push_u32(uint32_t val) {
+    critical_check_msg(result_size + 4 <= BUFFER_SIZE, "Buffer overflow"); 
+    result_buffer[result_size++] = (uint8_t)(val & 0xFF); 
+    result_buffer[result_size++] = (uint8_t)((val >> 8) & 0xFF); 
+    result_buffer[result_size++] = (uint8_t)((val >> 16) & 0xFF); 
+    result_buffer[result_size++] = (uint8_t)((val >> 24) & 0xFF); 
+}
+
+void load_slot_into_x0(slot_t slot) {
+    int32_t offset = slot + 8;
+    push_u32(0xF8400000 | ((offset & 0x1FF) << 12) | (29 << 5) | 0);
+}
+
+void load_slot_into_x1(slot_t slot) {
+    int32_t offset = slot + 8;
+    push_u32(0xF8400001 | ((offset & 0x1FF) << 12) | (29 << 5) | 1);
+}
+
+void store_x0_into_slot(slot_t slot) {
+    int32_t offset = slot + 8;
+    push_u32(0xF8000000 | ((offset & 0x1FF) << 12) | (29 << 5) | 0);
 }
 
 // Test the functions 
