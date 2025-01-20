@@ -23,7 +23,15 @@ int peak_stack_size = 0;
 typedef uint32_t slot_t; 
 
 #define MAX_VAR_NAME_LENGTH 20
-static char ident_buffer[MAX_VAR_NAME_LENGTH]; 
+static char ident_buffer[MAX_VAR_NAME_LENGTH];
+
+// Forward Declarations to prevent forward declaratioons 
+slot_t slot_allocate(); 
+void load_slot_into_x0(slot_t slot); 
+void load_slot_into_x1(slot_t slot); 
+void push_u32(uint32_t val);
+void store_x0_into_slot(slot_t slot);
+
 
 slot_t add_slots(slot_t a, slot_t b) {
     slot_t result = slot_allocate();
@@ -105,7 +113,6 @@ void skip_gaps(char **current) {
     }
 }
 
-// Read Integers 
 uint64_t read_int(char **current) {
     uint64_t result = 0; 
     while (isdigit(**current)) {
@@ -114,7 +121,7 @@ uint64_t read_int(char **current) {
     }
     return result; 
 }
-// Read Identifiers 
+
 char read_indent[MAX_VAR_NAME_LENGTH];
 size_t read_ident(char **current) {
     memset(read_indent, 0, sizeof(read_indent)); 
@@ -139,6 +146,7 @@ size_t read_ident(char **current) {
 }
 
 // Forward Declaration for Parsing 
+
 slot_t compile_expression(char **current); 
 slot_t parse_atom(char **current); 
 
@@ -149,7 +157,7 @@ slot_t parse_atom(char **current) {
     // Check for numbers 
     if (isdigit(**current)) { 
         uint64_t val = read_int(current); 
-        slot_t s = slot_allocate(val); 
+        slot_t s = slot_allocate(); 
         return s; 
     } 
     
@@ -161,8 +169,7 @@ slot_t parse_atom(char **current) {
         return 0; 
     } 
 
-    // Check for parenthesis 
-    if (**current == '(') {
+    if (**current == '(') { // Check for parenthesis 
         (*current)++; 
         slot_t value = compile_expression(current); 
         if (**current == ')') {
@@ -178,8 +185,7 @@ slot_t parse_atom(char **current) {
     return 0; 
 }
 
-// Parse expression with considerations of operator precedence 
-slot_t compile_term(char **current) {
+slot_t compile_term(char **current) { // Parse expression with considerations of operator precedence 
     slot_t left = parse_atom(current); 
 
     while (1) {
@@ -224,9 +230,13 @@ slot_t compile_expression(char **current) {
 
         if (op == '+') {
             left = add_slots(left, right); 
-        } else {
+        } else if (op == '-') {
             left = min_slots(left, right); 
-        }
+        } else if (op == '*') {
+            left = mul_slots(left, right); 
+        } else {
+            left = div_slots(left, right); 
+        } 
     }
     return left; 
 }
@@ -239,7 +249,7 @@ slot_t slot_allocate() {
     return result;  
 }
 
-// call push whenever i want to emit a singel ARM64 machine instruct of 4 bytes 
+// call push whenever I want to emit a singel ARM64 machine instruct of 4 bytes 
 void push_u32(uint32_t val) {
     critical_check_msg(result_size + 4 <= BUFFER_SIZE, "Buffer overflow"); 
     result_buffer[result_size++] = (uint8_t)(val & 0xFF); 
@@ -286,6 +296,40 @@ int main() {
         printf("Identifier length: %zu\n\n", length);
 
     }
-}
 
+    { // Block Scope 3, test emission functions. 
+        slot_t test_slot = slot_allocate();  // Allocate a slot
+        store_x0_into_slot(test_slot);        // This will generate the ARM64 instructions
+        
+        printf("Generated machine code for storing to slot %u:\n", test_slot);
+        for (size_t i = 0; i < result_size; i += 4) {
+            printf("Instruction %zu: 0x%02X%02X%02X%02X\n", 
+                i/4,
+                result_buffer[i+3], 
+                result_buffer[i+2], 
+                result_buffer[i+1], 
+                result_buffer[i]);
+        }
+    }
+
+    { // Test add_slot()
+        result_size = 0;  // reset so we only see newly generated instructions
+
+    slot_t leftAdd = 10;  // Just a mock "slot index"
+    slot_t rightAdd = 20; // Another mock "slot index"
+    slot_t resultAdd = add_slots(leftAdd, rightAdd); 
+
+    printf("ADD result slot = %u\n", resultAdd);
+    for (size_t i = 0; i < result_size; i += 4) {
+        printf("Instruction %zu: 0x%02X%02X%02X%02X\n", 
+            i/4,
+            result_buffer[i+3], 
+            result_buffer[i+2], 
+            result_buffer[i+1], 
+            result_buffer[i]);
+        } 
+    }
+    return 0;
+
+} 
 //TODO: load two stack slots into registers, emit an ALU instruction, store back. Specific to ARM64
