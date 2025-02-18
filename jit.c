@@ -69,7 +69,6 @@ slot_t div_slots(slot_t a, slot_t b) {
     return result; 
 }
 
-
 // <<<< 2. Lexer/Tokenization >>>> 
 void skip_whitespaces(char **current) {
     while(isspace(**current)) { // isspace, more thorough with checking white spaces 
@@ -242,7 +241,6 @@ slot_t compile_expression(char **current) {
 }
 
 // <<<<< 4. Code Emission >>>>>
-
 slot_t slot_allocate() {
     int32_t result = peak_stack_size;  
     peak_stack_size += 8;
@@ -332,4 +330,5 @@ int main() {
     return 0;
 
 } 
+
 //TODO: load two stack slots into registers, emit an ALU instruction, store back. Specific to ARM64
