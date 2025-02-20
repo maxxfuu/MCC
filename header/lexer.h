@@ -24,8 +24,17 @@ typedef struct {
     int column;
 } Token;
 
-Token* lexer_parse(char* source);
+typedef struct {
+    char* source;
+    
+    int position;
+    int line;
+    int column;
+} Lexer;
+
+void lexer_create(char* source);        // Allocate memory for lexer struct
+Token* lexer_parse(char* source);       // Allocate memory for each token
 void skip_whitespaces(char* Lexer);
-Token* create_token(TokenType type, char* value, int line, int column);
+void skip_comments(char* Lexer);
 
 #endif
