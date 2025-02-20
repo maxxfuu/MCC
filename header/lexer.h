@@ -1,6 +1,8 @@
 #ifndef LEXER_H
 #define LEXER_H
 
+#include <stdlib.h>
+#include <ctype.h>
 typedef enum {
     TOKEN_EOF = 0,
     TOKEN_IDENTIFIER,
@@ -34,7 +36,7 @@ typedef struct {
 
 void lexer_create(char* source);        // Allocate memory for lexer struct
 Token* lexer_parse(char* source);       // Allocate memory for each token
-void skip_whitespaces(char* Lexer);
+void skip_whitespaces(Lexer* lexer);
 void skip_comments(char* Lexer);
 
 #endif
